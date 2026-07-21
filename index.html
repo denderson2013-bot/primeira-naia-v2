@@ -300,6 +300,10 @@ section{padding:clamp(64px,7vw,96px) 0;position:relative;overflow:hidden;}
 .vsl-player{width:100%;display:flex;justify-content:center;}
 .vsl-player vturb-smartplayer{width:100%;max-width:400px;}
 @media (max-width:560px){.vsl-title{font-size:clamp(30px,9vw,44px);}}
+
+/* ===== delay de revelacao (VSL gate) ===== */
+.locked-content{display:none !important;}
+body.pn-unlocked .locked-content{display:block !important;}
 </style>
 </head>
 <body>
@@ -322,6 +326,9 @@ section{padding:clamp(64px,7vw,96px) 0;position:relative;overflow:hidden;}
       </div>
     </div>
   </section>
+
+  <!-- ===== conteudo bloqueado ate o video atingir 9:21 (561s) ===== -->
+  <div class="locked-content">
 
   <!-- I - HERO -->
   <section id="hero">
@@ -850,9 +857,12 @@ section{padding:clamp(64px,7vw,96px) 0;position:relative;overflow:hidden;}
     </div>
   </section>
 
+  </div>
+  <!-- ===== /conteudo bloqueado ===== -->
+
 </main>
 
-<footer class="footer">
+<footer class="footer locked-content">
   <div class="container">
     <p class="megaword" aria-hidden="true">Naia<span class="dot">.</span></p>
     <div class="footrow">
@@ -865,5 +875,63 @@ section{padding:clamp(64px,7vw,96px) 0;position:relative;overflow:hidden;}
 
 <script src="https://bio.denderson.ai/js/bg.js" defer></script>
 <script src="https://bio.denderson.ai/js/motion.js" defer></script>
+
+<!-- ===== delay de revelacao (VSL gate): abre o resto da pagina em 9:21 (561s) ===== -->
+<script>
+(function(){
+  "use strict";
+  var UNLOCK_AT = 561;            // 9min21s
+  var STORE_KEY = "pn_v2_unlocked";
+  var revealed = false;
+
+  function reveal(){
+    if (revealed) return;
+    revealed = true;
+    try { document.body.classList.add("pn-unlocked"); } catch(e){}
+    try { localStorage.setItem(STORE_KEY, "1"); } catch(e){}
+    // reprocessa animacoes de entrada do conteudo recem-revelado
+    try { window.dispatchEvent(new Event("resize")); } catch(e){}
+    try { window.dispatchEvent(new Event("scroll")); } catch(e){}
+  }
+
+  // 1) ja destravou antes -> abre na hora
+  try {
+    if (localStorage.getItem(STORE_KEY) === "1") { reveal(); return; }
+  } catch(e){}
+
+  // 2) observa o video interno do vturb-smartplayer (web component demora a montar)
+  var bound = false;
+  function tryBind(){
+    if (bound || revealed) return true;
+    var v = document.querySelector("vturb-smartplayer video");
+    if (!v) return false;
+    bound = true;
+    var onTime = function(){
+      try { if (v.currentTime >= UNLOCK_AT) reveal(); } catch(e){}
+    };
+    v.addEventListener("timeupdate", onTime, { passive: true });
+    // checagem imediata (caso ja esteja alem do ponto, ex. retomada de sessao)
+    onTime();
+    return true;
+  }
+
+  if (tryBind()) return;
+
+  // polling ate o <video> existir
+  var polls = 0;
+  var poll = setInterval(function(){
+    polls++;
+    if (tryBind() || revealed || polls > 1200) { clearInterval(poll); } // ~ ate 2min tentando montar
+  }, 100);
+
+  // reforco: MutationObserver para pegar o momento exato do mount
+  try {
+    var mo = new MutationObserver(function(){
+      if (tryBind() || revealed) { try { mo.disconnect(); } catch(e){} }
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+  } catch(e){}
+})();
+</script>
 </body>
 </html>
